@@ -1,17 +1,12 @@
 using CampAI.BuildTools;
+using Microsoft.CodeAnalysis;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Runtime.Loader;
 using System.Text.RegularExpressions;
 
-[assembly: AssemblyTitle("BuildTool")]
-[assembly: AssemblyCompany("CampAI Project")]
-[assembly: AssemblyProduct("BuildTools")]
-[assembly: AssemblyCopyright("Copyright (C) Tippisum 2015-2018. All rights reserved")]
-
-[assembly: AssemblyVersion("1.2.0.0")]
-[assembly: AssemblyFileVersion("1.2.0.0")]
 
 [assembly: Tool(Name = "builtin", Description = "Builtin module")]
 
@@ -27,16 +22,17 @@ namespace CampAI.BuildTools {
 			object[] va;
 			string name;
 			string value;
-			object info;
+			object info = default;
 			GroupCollection gc;
 			Group g;
 			int i;
 			int p;
-			bool nologo;
-			bool nonamed;
-			info = null;
-			nologo = false;
-			nonamed = false;
+			bool nologo = default;
+			bool nonamed = default;
+			AddAssemblyPath(AppDomain.CurrentDomain.BaseDirectory);
+			AddAssemblyPath(Path.GetDirectoryName(builtin.Location));
+			AddAssemblyPath(Directory.GetCurrentDirectory());
+			AssemblyLoadContext.Default.Resolving += ResolveAssembly;
 			try {
 				if (args.Length == 0 || rexHelp.Match(name = args[0]).Success) { goto help; }
 				info = module = LoadModule(name);
@@ -68,7 +64,7 @@ namespace CampAI.BuildTools {
 					} else {
 						arg = positional[p++];
 					}
-				addv:
+					addv:
 					arg.AddValue(value);
 				}
 				va = new object[all.Count];
@@ -84,14 +80,33 @@ namespace CampAI.BuildTools {
 				return 1;
 			}
 			return 0;
-		help:
+			help:
 			PrintHelp(info);
 			return 1;
 		}
 
+		internal static void AddMetadataReference(IList<MetadataReference> references, string name) {
+			Assembly assembly = default;
+			try {
+				assembly = LoadModule(name);
+			} catch { }
+			if (assembly != null) { references.Add(MetadataReference.CreateFromFile(assembly.Location)); }
+		}
+
+		private static readonly Assembly builtin = Assembly.GetExecutingAssembly();
+		private static List<string> assemblyPath = new List<string>();
 		private static Regex rexNamed = new Regex("^[-/]([^:=]+)(?:[:=](.*))?$", RegexOptions.CultureInvariant);
 		private static Regex rexHelp = new Regex("^(?:[-/][?h]|-{1,2}help)$", RegexOptions.CultureInvariant);
 
+		private static void AddAssemblyPath(string path) {
+			string full;
+			full = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
+			if (Directory.Exists(full)) {
+				if (!assemblyPath.Contains(full)) {
+					assemblyPath.Add(full);
+				}
+			}
+		}
 		private static void FormatColumn(string left, string right) {
 			string al;
 			string bl;
@@ -186,9 +201,11 @@ namespace CampAI.BuildTools {
 			if (name == null) { name = Path.GetFileName(module.Location); }
 		}
 		private static Assembly LoadModule(string module) {
-			return module == "builtin" ? Assembly.GetExecutingAssembly() : Assembly.LoadFrom(module);
-		}
-		private static void ParseArgs(string[] args) {
+			return module == "builtin"
+				? builtin
+				: !module.EndsWith(".dll") && !module.EndsWith(".exe") && module == Path.GetFileName(module)
+				? Assembly.Load(module)
+				: Assembly.LoadFrom(module);
 		}
 		private static void PrintHelp(object info) {
 			Assembly module;
@@ -205,7 +222,7 @@ namespace CampAI.BuildTools {
 			s1 = null;
 			s2 = null;
 			PrintLogo(info);
-			s0 = Path.GetFileName(Assembly.GetExecutingAssembly().Location);
+			s0 = Path.GetFileName(builtin.Location);
 			action = info as MethodInfo;
 			if (action != null) {
 				module = action.DeclaringType.Assembly;
@@ -247,7 +264,7 @@ namespace CampAI.BuildTools {
 			MethodInfo action;
 			string name;
 			string description;
-			module = Assembly.GetExecutingAssembly();
+			module = builtin;
 			Console.Write("{0} {1}\n{2}\n", module.GetCustomAttribute<AssemblyTitleAttribute>().Title, module.GetName().Version, module.GetCustomAttribute<AssemblyCopyrightAttribute>().Copyright);
 			if ((action = info as MethodInfo) == null) {
 				if ((module = info as Assembly) == null) { return; }
@@ -256,6 +273,19 @@ namespace CampAI.BuildTools {
 				if (!GetActionInfo(action, out name, out description)) { return; }
 			}
 			Console.Write(description == null ? "\n{0}\n\n" : "\n{0}: {1}\n\n", name, description);
+		}
+		private static Assembly ResolveAssembly(AssemblyLoadContext context, AssemblyName name) {
+			Assembly assembly = default;
+			int i;
+			if (assemblyPath != null) {
+				for (i = 0; i < assemblyPath.Count; ++i) {
+					try {
+						assembly = context.LoadFromAssemblyPath(Path.GetFullPath(name.Name + ".dll", assemblyPath[i]));
+						break;
+					} catch { }
+				}
+			}
+			return assembly;
 		}
 	}
 }

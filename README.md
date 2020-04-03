@@ -9,12 +9,13 @@ A CSharp solution for custom building action.
 
 ## Requirements
 
-* .NET Framework 4.5
+* .NET Core 3.1
+* [Microsoft.CodeAnalysis.CSharp.Scripting](https://www.nuget.org/packages/Microsoft.CodeAnalysis.CSharp.Scripting/)
 * (Optional) [Mono.Cecil](https://www.nuget.org/packages/Mono.Cecil/)
 
 ## Build
 
-* Use Visual Studio, msbuild or xbuild to build the project.
+* Use .NET Core SDK to build the project.
 
 ## Usage
 
